@@ -1,0 +1,105 @@
+#REFERENCE TAKEN FROM OPENCV DOCS
+
+import cv2
+import numpy as np
+import matplotlib as plt
+import math
+
+cam=cv2.VideoCapture(0)
+while True:
+    ret,frame=cam.read()
+
+    #hand data from rectangle formed
+    cv2.rectangle(frame,(100,100),(400,400),(0,0,255),5)
+    crop_image=frame[100:400,100:400]
+
+    #apply blurring
+    blur_image=cv2.GaussianBlur(crop_image,(3,3),0)
+
+    #convert to HSV
+    hsv_image=cv2.cvtColor(blur_image,cv2.COLOR_BGR2HSV)
+
+    #create a binary image where white is skin color and bg is black
+    mask=cv2.inRange(hsv_image,np.array([2,0,0]),np.array([20,255,255]))
+
+    #create a kernel for morphological transformation i.e operations performed on binary image (dilation and erosion)
+    kernel=np.ones((5,5))
+
+    #dilation adds pixels to image
+    #erosion removes pixels from image
+    dilation=cv2.dilate(mask,kernel,iterations=1)
+    erosion=cv2.erode(mask,kernel,iterations=1)
+
+    filtered=cv2.GaussianBlur(erosion,(3,3),0)
+    ret,thresh=cv2.threshold(filtered,127,255,0)
+
+    cv2.imshow('Thresholded image',thresh)
+
+    contours, hierarchy=cv2.findContours(thresh.copy(),cv2.RETR_TREE,cv2.CHAIN_APPROX_SIMPLE)
+
+    try:
+        #find max area
+        contour=max(contours,key=lambda x:cv2.contourArea(x))
+        x,y,w,h=cv2.boundingRect(contour)
+        cv2.rectangle(crop_image,(x,y),(x+h,y+w),(0,0,255),0)
+
+        hull=cv2.convexHull(contour)
+
+        #drawing contours
+        draw=np.zeros(crop_image.shape,np.uint8)
+        cv2.drawContours(draw,[contour],-1,(0,255,0),0)
+        cv2.drawContours(draw,[hull],-1,(0,0,255),0)
+
+        #convexity defects
+        hull=cv2.convexHull(contour,returnPoints=False)
+        defects=cv2.convexityDefects(contour,hull)
+
+        #to calc defects use cosine rule
+        count_defects=0
+
+        for i in range(defects.shape[0]):
+            s,e,f,d=defects[i,0]
+            start=tuple(contour[s][0])
+            end=tuple(contour[e][0])
+            far=tuple(contour[f][0]) 
+
+            #using cosine rule
+            a=math.sqrt((end[0]-start[0]) ** 2 + (end[1]-start[1]) ** 2)
+            b=math.sqrt((far[0]-start[0]) ** 2 + (far[1]-start[1]) ** 2)
+            c=math.sqrt((end[0]-far[0]) ** 2 + (end[1]-far[1]) ** 2)
+            angle=(math.acos((b ** 2 + c ** 2 - a ** 2)/(2*b*c))*180)/3.14
+
+            if angle<=90:
+                count_defects+=1
+                cv2.circle(crop_image,far,1,[0,0,255],-1)
+
+            cv2.line(crop_image,start,end,[0,255,0],2)    
+
+            #count no.of fingers
+            if count_defects==0:
+                cv2.putText(frame,'ONE',(50,50),cv2.FONT_HERSHEY_PLAIN,2,(0,0,255),2)
+            elif count_defects==1:
+                cv2.putText(frame,'TWO',(50,50),cv2.FONT_HERSHEY_PLAIN,2,(0,0,255),2)
+            elif count_defects==2:
+                cv2.putText(frame,'THREE',(50,50),cv2.FONT_HERSHEY_PLAIN,2,(0,0,255),2)
+            elif count_defects==3:
+                cv2.putText(frame,'FOUR',(50,50),cv2.FONT_HERSHEY_PLAIN,2,(0,0,255),2)
+            elif count_defects==4:
+                cv2.putText(frame,'FIVE',(50,50),cv2.FONT_HERSHEY_PLAIN,2,(0,0,255),2)
+
+            else:
+                pass
+
+    except:
+        pass
+
+    cv2.imshow('Gesture',frame)
+    all_image=np.hstack((draw,crop_image))
+    cv2.imshow('Contours',all_image)
+
+    #we can also choose ord('q') function instead of ASCII values
+    if cv2.waitKey(1)==13:
+        break
+
+cam.release()
+cv2.destroyAllWindows()
